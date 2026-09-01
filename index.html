@@ -6,11 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>DREADLIGHT</title>
   <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&family=VT323&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 
 <body>
-  <!-- background effects -->
+
   <div id="blood-strip"></div>
   <div id="scene"></div>
   <div id="vignette"></div>
@@ -24,7 +24,7 @@
 
   <div class="overlay" id="startScreen">
     <div class="title-block">
-      <!-- small detail to set the mood -->
+
       <div class="warn-stamp">⚠ don't play alone</div>
       <span class="main-title">DREADLIGHT</span>
       <span class="tagline">something is in the dark</span>
@@ -40,15 +40,20 @@
     <div id="caught-countdown">back in 3...</div>
   </div>
 
-  <!-- intermission screen (super scuffed right now but it works) -->
+
   <div class="overlay" id="intermissionScreen" style="display:none;">
-    <h1>you made it</h1>
-    <p id="intermissionText">level 1 done. they're still out there.</p>
+    <div class="inter-survived">you made it out alive.</div>
+    <div class="inter-taunt" id="intermissionText"></div>
+    <div class="inter-gate">
+      <div class="inter-gate-label">up next</div>
+      <div class="inter-gate-lvl" id="interNextLvl">LEVEL 2</div>
+    </div>
     <div class="actions">
-      <button class="btn ok" id="nextLevelBtn">keep going</button>
-      <button class="btn" id="quitBtn">quit</button>
+      <button class="btn ok" id="nextLevelBtn">enter it</button>
+      <button class="btn" id="quitBtn">run</button>
     </div>
   </div>
+
 
   <div class="overlay" id="gameOver" style="display:none;">
     <h1>GAME OVER</h1>
@@ -61,7 +66,7 @@
 
   <div class="made-tag">dreadlight // hand-coded</div>
 
-  <script src="game.js"></script>
+  <script src="game.js?v=4"></script>
 </body>
 
 </html>

@@ -1,7 +1,3 @@
-// DREADLIGHT - Core Game Engine
-// Hand-coded with blood, sweat, and too much caffeine.
-
-// -- Blood drip visual effect setup --
 (function () {
   const strip = document.getElementById('blood-strip');
   if (!strip) return;
@@ -22,13 +18,19 @@
   }
 })();
 
-// -- Game State --
-let audioCtx, lives = 2, gameActive = false, currentLevel = 1;
+let audioCtx;
+let lives = 2;
+let gameActive = false;
+let currentLevel = 1;
 let mouseX, mouseY, cx, cy;
 let creatures = [];
 let levelConfig = null;
-let aimTime = 0, animId = null, lastTime = 0;
-let ambientNodes = null, heartbeatTO = null, currentHeartbeatSource = null;
+let animId = null;
+let lastTime = 0;
+let ambientNodes = null;
+let heartbeatTO = null;
+let currentHeartbeatSource = null;
+let successSoundNode = null;
 
 const audioCache = {};
 const preloadedBuffers = {};
@@ -53,10 +55,9 @@ function loadAudioFiles() {
   return Promise.all(promises);
 }
 audioLoadPromise = loadAudioFiles();
-const BEAM_REACH = 280, BEAM_HALF = 10 * Math.PI / 180;
+const BEAM_REACH = 380, BEAM_HALF = 14 * Math.PI / 180;
 const DETECT_HALF = 12 * Math.PI / 180;
 const CREATURE_CLOSE = 120;
-const AIM_NEEDED = 0.75;
 let currentAimNeeded = 0.75;
 
 const darkC = document.getElementById('darkness');
@@ -106,27 +107,56 @@ const GHOST_LOOK = {
 
 const TOTAL_GHOSTS = GHOST_NAMES.length - 1;
 const NIGHTS = TOTAL_GHOSTS;
-const TOTAL_LEVELS = NIGHTS * 8;
 const NIGHT_NAMES = ['night one', 'night two', 'night three', 'night four', 'night five', 'night six', 'the final night'];
 
 function getLevelConfig(level) {
-  // calculate what night we're on (8 levels per night)
   let night = Math.ceil(level / 8);
   if (night > NIGHTS) night = NIGHTS;
 
-  // how many ghost types can spawn?
   let ghostPool = night;
   if (ghostPool > TOTAL_GHOSTS) ghostPool = TOTAL_GHOSTS;
 
-  // roughly 1 extra ghost every 3 levels in the current night
-  let ghostCount = 1 + Math.floor(((level - 1) % 8) / 3);
+  const pos = (level - 1) % 8;
+
+  const nightSpeeds = [
+    { base: 50,   step: 16 },
+    { base: 128,  step: 20 },
+    { base: 240,  step: 28 },
+    { base: 380,  step: 38 },
+    { base: 560,  step: 50 },
+    { base: 810,  step: 64 },
+    { base: 1140, step: 84 },
+  ];
+
+  const nightGhosts = [
+    [1, 1, 1, 1, 1, 1, 1, 2],
+    [2, 2, 2, 2, 2, 2, 2, 3],
+    [2, 2, 3, 3, 3, 3, 3, 3],
+    [3, 3, 3, 3, 3, 3, 4, 4],
+    [3, 3, 4, 4, 4, 4, 4, 5],
+    [4, 4, 4, 4, 5, 5, 5, 5],
+    [4, 5, 5, 5, 5, 6, 6, 7],
+  ];
+
+  const nightAim = [
+    [0.80, 0.80, 0.78, 0.78, 0.76, 0.76, 0.74, 0.72],
+    [0.90, 0.90, 0.88, 0.88, 0.86, 0.86, 0.84, 0.82],
+    [1.00, 1.00, 0.98, 0.96, 0.94, 0.92, 0.90, 0.88],
+    [1.05, 1.05, 1.03, 1.01, 0.99, 0.97, 0.95, 0.93],
+    [1.15, 1.15, 1.13, 1.11, 1.09, 1.07, 1.05, 1.03],
+    [1.30, 1.30, 1.28, 1.26, 1.24, 1.22, 1.20, 1.18],
+    [1.50, 1.50, 1.48, 1.46, 1.44, 1.42, 1.40, 1.38],
+  ];
+
+  const ns = nightSpeeds[night - 1] || nightSpeeds[6];
+  const speed = ns.base + pos * ns.step;
+
+  const ghostCountTable = nightGhosts[night - 1] || nightGhosts[6];
+  let ghostCount = ghostCountTable[pos];
   if (ghostCount > ghostPool) ghostCount = ghostPool;
 
-  let speed = 70 + (level * 3.5);
-
-  // shrink the aim window as it gets harder
-  let aimWindow = 0.85 - (level * 0.01);
-  if (aimWindow < 0.35) aimWindow = 0.35;
+  const aimTable = nightAim[night - 1] || nightAim[6];
+  const aimWindow = aimTable[pos];
 
   return { night, ghostPool, ghostCount, speed, aimWindow };
 }
@@ -134,7 +164,12 @@ function getLevelConfig(level) {
 function loadProgress() {
   try {
     const raw = localStorage.getItem('dreadlight_progress');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && typeof p === 'object' && typeof p.highestUnlocked === 'number' && Array.isArray(p.completed)) {
+        return p;
+      }
+    }
   } catch(e) {}
   return { highestUnlocked: 1, completed: [] };
 }
@@ -144,42 +179,7 @@ function saveProgress() {
 }
 let progress = loadProgress();
 
-function buildLevelGrid() {
-  const grid = document.getElementById('level-grid');
-  if (!grid) return;
-  
-  grid.innerHTML = '';
-  for (let n = 0; n < NIGHTS; n++) {
-    const hdr = document.createElement('div');
-    hdr.className = 'night-hdr';
-    hdr.textContent = NIGHT_NAMES[n];
-    grid.appendChild(hdr);
-    
-    const row = document.createElement('div');
-    row.className = 'night-row';
-    
-    for (let i = 0; i < 8; i++) {
-      const lvl = n * 8 + i + 1;
-      const t = document.createElement('div');
-      t.className = 'lvl-tile';
-      t.textContent = lvl;
-      
-      const unlocked = lvl <= progress.highestUnlocked;
-      const done = progress.completed.indexOf(lvl) !== -1;
-      
-      if (!unlocked) t.classList.add('locked');
-      if (done) t.classList.add('done');
-      
-      if (unlocked) {
-        t.addEventListener('click', () => startGame(lvl));
-      }
-      row.appendChild(t);
-    }
-    grid.appendChild(row);
-  }
-}
 
-// caught overlay elements
 const caughtEl       = document.getElementById('ghost-caught');
 const caughtImgEl    = document.getElementById('caught-ghost-img');
 const caughtNameEl   = document.getElementById('caught-name');
@@ -198,7 +198,7 @@ function renderFlashlight() {
   const w = darkC.width, h = darkC.height;
   dCtx.clearRect(0, 0, w, h);
   dCtx.globalCompositeOperation = 'source-over';
-  dCtx.fillStyle = 'rgba(0,0,0,0.96)';
+  dCtx.fillStyle = 'rgba(0,0,0,0.58)';
   dCtx.fillRect(0, 0, w, h);
   dCtx.globalCompositeOperation = 'destination-out';
 
@@ -218,19 +218,23 @@ function renderFlashlight() {
   dCtx.arc(cx, cy, reach, angle - half, angle + half);
   dCtx.closePath();
 
-  const gr = dCtx.createRadialGradient(cx, cy, 15, cx, cy, reach);
-  gr.addColorStop(0, 'rgba(255,255,255,1)');
-  gr.addColorStop(0.25, 'rgba(255,255,255,0.85)');
-  gr.addColorStop(0.6, 'rgba(255,255,255,0.3)');
-  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  const gr = dCtx.createRadialGradient(cx, cy, 8, cx, cy, reach);
+  gr.addColorStop(0,    'rgba(255,252,220,1)');
+  gr.addColorStop(0.2,  'rgba(255,235,160,1)');
+  gr.addColorStop(0.55, 'rgba(245,200,100,0.88)');
+  gr.addColorStop(0.78, 'rgba(220,160,50,0.55)');
+  gr.addColorStop(0.92, 'rgba(180,110,20,0.2)');
+  gr.addColorStop(1,    'rgba(140,70,0,0)');
   dCtx.fillStyle = gr;
   dCtx.fill();
 
   dCtx.beginPath();
-  dCtx.arc(cx, cy, 55, 0, Math.PI * 2);
-  const ag = dCtx.createRadialGradient(cx, cy, 0, cx, cy, 55);
-  ag.addColorStop(0, 'rgba(255,255,255,0.4)');
-  ag.addColorStop(1, 'rgba(255,255,255,0)');
+  dCtx.arc(cx, cy, 150, 0, Math.PI * 2);
+  const ag = dCtx.createRadialGradient(cx, cy, 0, cx, cy, 150);
+  ag.addColorStop(0,    'rgba(255,245,185,1.0)');
+  ag.addColorStop(0.4,  'rgba(245,200,100,0.55)');
+  ag.addColorStop(0.75, 'rgba(210,145,30,0.2)');
+  ag.addColorStop(1,    'rgba(170,90,0,0)');
   dCtx.fillStyle = ag;
   dCtx.fill();
 
@@ -246,20 +250,18 @@ function spawnCreatures() {
   const pool = cfg.ghostPool;
   
   for (let i = 0; i < count; i++) {
-    // spread them out roughly in a circle, plus some random jitter
     const ang = ((Math.PI * 2) / count) * i + (Math.random() * 0.5);
     const dist = 580 + (Math.random() * 370); // start them way off screen
     
     const revealEl = document.createElement('div');
     revealEl.className = 'ghost-reveal';
-    // god i hate inline styles but whatever it's faster
     revealEl.style.cssText = 'position:fixed;z-index:150;display:none;width:70px;height:70px;transform:translate(-50%,-50%);pointer-events:none;';
     
     const img = document.createElement('img');
     img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;filter:contrast(1.5) brightness(0.35);box-shadow:inset 0 0 20px rgba(0,0,0,0.8),0 0 20px rgba(180,0,0,0.4);';
     img.onerror = function() { this.onerror = null; this.src = 'images/jumpscare.jpg'; };
     
-    const gType = 1 + (i % pool);
+    const gType = 1 + Math.floor(Math.random() * pool);
     img.src = 'images/ghost_level_' + gType + '.jpg';
     revealEl.appendChild(img);
     document.body.appendChild(revealEl);
@@ -293,7 +295,6 @@ function updateCreature(dt) {
       c.wanderAng = (Math.random() - 0.5) * 2 * maxAng;
       c.speedBurst = 1.5 + Math.random() * (1 + currentLevel * 0.3);
     }
-    // basic pathfinding - just walk roughly towards the player
     const toPlayer = Math.atan2(-c.y, -c.x);
     const moveAng = toPlayer + c.wanderAng;
     const spd = c.speed * c.speedBurst;
@@ -304,7 +305,6 @@ function updateCreature(dt) {
   });
 }
 
-// Audio init happens in startGame now.
 
 function createCreatureAudio() {
   if (!audioCtx) return;
@@ -318,8 +318,7 @@ function createCreatureAudio() {
     s.loop = true;
     s.connect(gain);
     s.start();
-    creatureAudio = { gain, pan, oscs: [s], subs: [] };
-    return;
+    return { gain, pan, oscs: [s], subs: [] };
   }
 
   const o1 = audioCtx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 75;
@@ -470,21 +469,56 @@ function stopAmbient() {
   ambientNodes = null;
 }
 
+function stopSuccessSound() {
+  if (!successSoundNode) return;
+  try { successSoundNode.stop(); } catch(e) {}
+  successSoundNode = null;
+}
+
 function playSuccessSound() {
   if (!audioCtx) return;
+  stopSuccessSound();
   const t = audioCtx.currentTime;
   if (audioCache.success) {
     const s = audioCtx.createBufferSource();
     s.buffer = audioCache.success;
     s.connect(audioCtx.destination);
     s.start(t);
+    successSoundNode = s;
     return;
   }
-  const g = audioCtx.createGain(); g.connect(audioCtx.destination);
-  g.gain.setValueAtTime(0.12, t); g.gain.linearRampToValueAtTime(0, t + 0.7);
-  const o = audioCtx.createOscillator(); o.type = 'sine';
-  o.frequency.setValueAtTime(520, t); o.frequency.linearRampToValueAtTime(1040, t + 0.35);
-  o.connect(g); o.start(t); o.stop(t + 0.7);
+  const dur = 3.5;
+  const master = audioCtx.createGain();
+  master.connect(audioCtx.destination);
+  master.gain.setValueAtTime(0, t);
+  master.gain.linearRampToValueAtTime(0.18, t + 0.3);
+  master.gain.setValueAtTime(0.18, t + dur - 0.6);
+  master.gain.linearRampToValueAtTime(0, t + dur);
+
+  const freqs = [260, 330, 390, 520];
+  freqs.forEach((f, i) => {
+    const o = audioCtx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 0.5, t);
+    o.frequency.linearRampToValueAtTime(f, t + 0.4 + i * 0.2);
+    o.frequency.setValueAtTime(f, t + 0.4 + i * 0.2);
+    o.frequency.linearRampToValueAtTime(f * 1.5, t + dur - 0.4);
+    const og = audioCtx.createGain();
+    og.gain.setValueAtTime(0, t + i * 0.18);
+    og.gain.linearRampToValueAtTime(0.25, t + i * 0.18 + 0.25);
+    o.connect(og); og.connect(master);
+    o.start(t + i * 0.18); o.stop(t + dur);
+  });
+
+  const pulse = audioCtx.createOscillator();
+  pulse.type = 'triangle';
+  pulse.frequency.setValueAtTime(80, t);
+  pulse.frequency.linearRampToValueAtTime(160, t + dur);
+  const pg = audioCtx.createGain(); pg.gain.setValueAtTime(0.08, t); pg.gain.linearRampToValueAtTime(0, t + dur);
+  pulse.connect(pg); pg.connect(master);
+  pulse.start(t); pulse.stop(t + dur);
+
+  successSoundNode = master;
 }
 
 function playJumpscareSound() {
@@ -534,23 +568,19 @@ function checkDetection(dt) {
     if (diff < DETECT_HALF && c.dist < 650) {
       c.aimTime += dt;
       if (c.aimTime >= currentAimNeeded) {
-        c.alive = false; // got em
+        c.alive = false;
         fadeCreatureAudio(c);
         playSuccessSound();
         c.revealEl.style.display = 'none';
         
-        // checking if that was the last one
-        let allDead = true;
-        for (let j=0; j < creatures.length; j++) {
-          if (creatures[j].alive) allDead = false;
-        }
+        const allDead = creatures.every(x => !x.alive);
         
         if (allDead) {
           successEncounter();
         }
       }
     } else {
-      c.aimTime = Math.max(0, c.aimTime - (dt * 0.6)); // slowly lose focus
+      c.aimTime = Math.max(0, c.aimTime - dt * 0.6);
     }
     
     if (c.alive && c.aimTime > 0) {
@@ -571,10 +601,81 @@ function checkDetection(dt) {
   });
 }
 
+function navigateOut(url) {
+  document.body.style.transition = 'opacity 0.7s ease';
+  document.body.style.opacity = '0';
+  setTimeout(() => { window.location.href = url; }, 750);
+}
+
+const LEVEL_TAUNTS = [
+  '',
+  'that was nothing. the dark barely noticed you.',
+  'two down. the crawler is still hungry.',
+  'still breathing. bold of you.',
+  'four. they remember your face now.',
+  'halfway through night one. getting brave, aren\'t we.',
+  'six levels. your hands are shaking. i can tell.',
+  'almost done with night one. don\'t get comfortable.',
+  'night one is over. you survived nothing. wait for what\'s next.',
+  'the shadow wraith knows you\'re here.',
+  'you can\'t see it. it can see you.',
+  'level eleven. sleep deprived yet?',
+  'level twelve — easy, right? wait until night three. you\'ll cry.',
+  'the banshee heard that. all of it.',
+  'fourteen. she\'s been screaming for you.',
+  'almost halfway through night two. your luck is running out.',
+  'sixteen done. the dark is thicker now. you feel it.',
+  'night two is behind you. it\'s still behind you.',
+  'the penitent doesn\'t forgive. it just waits.',
+  'nineteen levels. your sins are stacking up.',
+  'twenty. you should go to sleep.',
+  'the flashlight won\'t save you forever.',
+  'twenty-two. it prayed over your chair while you were away.',
+  'almost through night three. your blood pressure is showing.',
+  'night three done. you look pale.',
+  'the doll found your photograph.',
+  'twenty-six. she\'s been watching since level one.',
+  'you thought you were safe for a second. that second is gone.',
+  'twenty-eight. it smiled at you. you didn\'t see it.',
+  'halfway. the game is tired of being nice.',
+  'thirty. stop. breathe. it won\'t help.',
+  'night four is dead. night five is awake.',
+  'the jester doesn\'t laugh because it\'s funny.',
+  'thirty-three. you survived. it let you.',
+  'the corridor behind you isn\'t empty.',
+  'thirty-five. you\'re not winning. you\'re just not dead yet.',
+  'night five done. the jester took notes.',
+  'the drowned doesn\'t need air.',
+  'thirty-eight. the water is rising. you can\'t hear it yet.',
+  'your footsteps echo. hers don\'t.',
+  'forty levels. nothing about this was luck.',
+  'she never left the water. the water is everywhere now.',
+  'forty-two. you\'re breathing too loud.',
+  'the final night knows your name.',
+  'forty-four. this is not the end. this is the throat of the end.',
+  'almost. the dark is personal now.',
+  'forty-six. go back. you won\'t though.',
+  'every ghost you cleared remembers.',
+  'forty-eight. night six is dead. good luck.',
+  'they are all awake now.',
+  'fifty. the dark laughed.',
+  'your torch is dimmer than it was on level one. or is it?',
+  'fifty-two. the last night has been watching since you started.',
+  'three left. don\'t think about that.',
+  'fifty-four. you\'ve come too far to stop and too far to survive.',
+  'one more. one. the drowned is right behind you.',
+  'you finished it. somehow. go outside.',
+];
+
+function getLevelTaunt(lvl) {
+  if (lvl >= 1 && lvl <= 56) return LEVEL_TAUNTS[lvl];
+  return 'you\'re still here. that\'s either brave or stupid.';
+}
+
 function successEncounter() {
   stopHeartbeat();
   stopAmbient();
-  if (progress.completed.indexOf(currentLevel) === -1) {
+  if (!progress.completed.includes(currentLevel)) {
     progress.completed.push(currentLevel);
   }
   if (currentLevel >= progress.highestUnlocked) {
@@ -588,11 +689,25 @@ function successEncounter() {
   document.body.classList.add('shake');
   setTimeout(function() { document.body.classList.remove('shake'); }, 400);
   gameActive = false;
+  cancelAnimationFrame(animId);
   document.body.classList.remove('game-running');
-  setTimeout(function() {
-    interTxt.textContent = 'level ' + cleared + ' done. they\'re still out there.';
-    interScr.style.display = 'flex';
-  }, 1000);
+
+  if (cleared % 8 === 0) {
+    const nextNight = Math.ceil(currentLevel / 8);
+    setTimeout(() => {
+      if (nextNight > NIGHTS) {
+        navigateOut('index.html?v=3');
+      } else {
+        navigateOut('night.html?n=' + nextNight);
+      }
+    }, 3800);
+    return;
+  }
+
+  const nextLvlEl = document.getElementById('interNextLvl');
+  if (nextLvlEl) nextLvlEl.textContent = 'LEVEL ' + currentLevel;
+  interTxt.textContent = getLevelTaunt(cleared);
+  interScr.style.display = 'flex';
 }
 
 function showCaughtScreen(killer) {
@@ -659,7 +774,7 @@ function triggerGameOver() {
   jumpEl.style.padding = '20px';
 
   if (creatures.length > 1) {
-    creatures.forEach((c, idx) => {
+    creatures.forEach(c => {
       const img = document.createElement('img');
       img.src = `images/ghost_level_${c.gType || 1}.jpg`;
       img.onerror = function() { this.onerror = null; this.src = 'images/jumpscare.jpg'; };
@@ -746,6 +861,10 @@ function generateScene() {
 async function startGame(lvl) {
   currentLevel = lvl;
   levelConfig = getLevelConfig(lvl);
+  currentAimNeeded = levelConfig.aimWindow;
+  stopSuccessSound();
+  stopAmbient();
+  stopHeartbeat();
   lives = 2;
 
   livesEl.textContent = '❤️❤️';
@@ -779,19 +898,56 @@ async function startGame(lvl) {
 document.getElementById('restartBtn').addEventListener('click', function() {
   overScr.style.display = 'none';
   startScr.style.display = 'flex';
-  buildLevelGrid();
+  buildNightCards();
 });
 
 document.getElementById('nextLevelBtn').addEventListener('click', function() {
+  interScr.style.display = 'none';
   startGame(currentLevel);
 });
 
 document.getElementById('quitBtn').addEventListener('click', function() {
   interScr.style.display = 'none';
   startScr.style.display = 'flex';
-  buildLevelGrid();
+  buildNightCards();
 });
 
-buildLevelGrid();
-renderFlashlight();
+function buildNightCards() {
+  const grid = document.getElementById('level-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let n = 0; n < NIGHTS; n++) {
+    const nightNum = n + 1;
+    const firstLvl = n * 8 + 1;
+    const unlocked = firstLvl <= progress.highestUnlocked;
+    let allDone = true;
+    for (let i = 0; i < 8; i++) {
+      if (!progress.completed.includes(n * 8 + i + 1)) { allDone = false; break; }
+    }
 
+    const card = document.createElement('div');
+    card.className = 'night-card' + (unlocked ? '' : ' night-card--locked') + (allDone ? ' night-card--done' : '');
+    card.innerHTML =
+      `<span class="nc-num">${NIGHT_NAMES[n]}</span>` +
+      `<span class="nc-ghost">${GHOST_NAMES[nightNum]}</span>` +
+      (allDone ? '<span class="nc-check">✓</span>' : '') +
+      (!unlocked ? '<span class="nc-lock">🔒</span>' : '');
+
+    if (unlocked) {
+      card.addEventListener('click', () => navigateOut('night.html?n=' + nightNum));
+    }
+    grid.appendChild(card);
+  }
+}
+
+(function() {
+  const lvl = parseInt(localStorage.getItem('dreadlight_autostart'));
+  if (lvl >= 1) {
+    localStorage.removeItem('dreadlight_autostart');
+    startGame(lvl);
+  } else {
+    buildNightCards();
+  }
+})();
+
+renderFlashlight();

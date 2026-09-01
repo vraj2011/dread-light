@@ -19,7 +19,6 @@ body.game-running {
   cursor: crosshair;
 }
 
-/* film grain */
 body::before {
   content: '';
   position: fixed;
@@ -35,29 +34,12 @@ body::before {
 }
 
 @keyframes noiseAnim {
-  0% {
-    transform: translate(0, 0);
-  }
-
-  20% {
-    transform: translate(-12px, 8px);
-  }
-
-  40% {
-    transform: translate(9px, -14px);
-  }
-
-  60% {
-    transform: translate(-6px, 11px);
-  }
-
-  80% {
-    transform: translate(15px, -7px);
-  }
-
-  100% {
-    transform: translate(-4px, 3px);
-  }
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-12px, 8px); }
+  40% { transform: translate(9px, -14px); }
+  60% { transform: translate(-6px, 11px); }
+  80% { transform: translate(15px, -7px); }
+  100% { transform: translate(-4px, 3px); }
 }
 
 body::after {
@@ -78,8 +60,8 @@ body::after {
   inset: 0;
   z-index: 1;
   background:
-    radial-gradient(ellipse at 15% 85%, rgba(30, 0, 0, .6) 0%, transparent 50%),
-    radial-gradient(ellipse at 85% 15%, rgba(8, 0, 18, .5) 0%, transparent 50%),
+    radial-gradient(ellipse at 15% 85%, rgba(30, 0, 0, .3) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 15%, rgba(8, 0, 18, .25) 0%, transparent 50%),
     #0a0606;
 }
 
@@ -138,15 +120,12 @@ canvas#darkness {
     opacity: 0;
     transform: translateY(0);
   }
-
   15% {
     opacity: .3;
   }
-
   85% {
     opacity: .2;
   }
-
   100% {
     opacity: 0;
     transform: translateY(-110px) translateX(20px);
@@ -264,38 +243,30 @@ canvas#darkness {
     0 0 40px rgba(200, 0, 0, .4),
     0 0 80px rgba(120, 0, 0, .2);
   transform: rotate(-1.8deg) skewX(-0.5deg);
+  animation: flicker 7s ease-in-out infinite;
 }
 
 @keyframes flicker {
-
   0%,
   89%,
   100% {
     opacity: 1;
     color: #c01010;
   }
-
   90% {
     opacity: .65;
     color: #e03030;
     text-shadow: -4px 0 rgba(0, 255, 200, .15), 4px 0 rgba(255, 0, 80, .2);
   }
-
   92% {
     opacity: 1;
   }
-
   95% {
     opacity: .8;
   }
-
   97% {
     opacity: 1;
   }
-}
-
-.main-title {
-  animation: flicker 7s ease-in-out infinite;
 }
 
 .tagline {
@@ -317,8 +288,11 @@ canvas#darkness {
 }
 
 #level-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
-  max-width: 520px;
+  max-width: 460px;
   margin-top: 4px;
 }
 
@@ -332,11 +306,93 @@ canvas#darkness {
   text-shadow: 0 0 15px rgba(150, 0, 0, .3);
 }
 
-.night-row {
+.night-card {
+  position: relative;
   display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px 14px 20px;
+  border-top: 1px solid rgba(90, 10, 10, .22);
+  border-right: 1px solid rgba(70, 8, 8, .15);
+  border-bottom: 1px solid rgba(90, 10, 10, .22);
+  border-left: 3px solid rgba(140, 12, 12, .75);
+  background: linear-gradient(105deg, rgba(20, 2, 2, .92) 0%, rgba(8, 1, 1, .75) 100%),
+              url('images/card_bg.png') center/cover;
+  background-blend-mode: multiply, normal;
+  cursor: pointer;
+  transition: border-color .22s, box-shadow .22s, background .22s;
+  overflow: hidden;
+}
+
+.night-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, #6a0000, rgba(80, 0, 0, .3) 60%, transparent);
+}
+
+.night-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 10% 50%, rgba(120, 0, 0, .07) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.night-card:hover:not(.night-card--locked) {
+  border-left-color: rgba(210, 18, 18, 1);
+  border-color: rgba(160, 22, 22, .55);
+  box-shadow: 0 0 28px rgba(160, 0, 0, .22), inset 0 0 24px rgba(90, 0, 0, .14);
+  background: linear-gradient(105deg, rgba(48, 4, 4, .95) 0%, rgba(18, 2, 2, .88) 100%),
+              url('images/card_bg.png') center/cover;
+  background-blend-mode: multiply, normal;
+}
+
+.night-card--locked {
+  opacity: 0.26;
+  cursor: not-allowed;
+  filter: grayscale(0.55);
+}
+
+.night-card--done {
+  border-left-color: rgba(25, 90, 25, .8);
+  border-color: rgba(25, 70, 25, .28);
+}
+
+.night-card--done::before {
+  background: linear-gradient(90deg, #1a4a1a, transparent 60%);
+}
+
+.nc-num {
+  font-family: 'Creepster', cursive;
+  font-size: 17px;
+  color: #9a1515;
+  letter-spacing: 3px;
+  min-width: 100px;
+  text-shadow: 0 0 14px rgba(170, 0, 0, .4);
+}
+
+.nc-ghost {
+  font-family: 'Special Elite', serif;
+  font-size: 9px;
+  color: #3a1f1f;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.nc-check {
+  font-size: 12px;
+  color: #305a30;
+  text-shadow: 0 0 8px rgba(30, 100, 30, .4);
+}
+
+.nc-lock {
+  font-size: 11px;
+  opacity: 0.35;
 }
 
 .lvl-tile {
@@ -403,13 +459,16 @@ canvas#darkness {
 }
 
 .btn.ok {
-  color: #407840;
-  border-color: rgba(60, 120, 60, .45);
+  color: #3aaa3a;
+  border-top: 1px solid rgba(50, 140, 50, .5);
+  border-left: 1px solid rgba(40, 120, 40, .4);
+  border-right: 1px solid rgba(60, 150, 60, .35);
+  border-bottom: 2px solid rgba(50, 140, 50, .55);
 }
 
 .btn.ok:hover {
-  color: #60bb60;
-  background: rgba(20, 70, 20, .2);
+  color: #66ee66;
+  background: rgba(15, 60, 15, .25);
 }
 
 #ghost-caught {
@@ -424,12 +483,10 @@ canvas#darkness {
 }
 
 @keyframes caughtPulse {
-
   0%,
   100% {
     box-shadow: inset 0 0 80px rgba(180, 0, 0, .3);
   }
-
   50% {
     box-shadow: inset 0 0 160px rgba(220, 0, 0, .55);
   }
@@ -454,25 +511,11 @@ canvas#darkness {
 }
 
 @keyframes caughtImgShake {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-
-  25% {
-    transform: translate(-6px, 5px) rotate(-1deg);
-  }
-
-  50% {
-    transform: translate(5px, -6px) rotate(1deg);
-  }
-
-  75% {
-    transform: translate(-4px, -3px) rotate(-0.5deg);
-  }
-
-  100% {
-    transform: translate(6px, 4px) rotate(0.5deg);
-  }
+  0% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-6px, 5px) rotate(-1deg); }
+  50% { transform: translate(5px, -6px) rotate(1deg); }
+  75% { transform: translate(-4px, -3px) rotate(-0.5deg); }
+  100% { transform: translate(6px, 4px) rotate(0.5deg); }
 }
 
 #caught-name {
@@ -503,7 +546,8 @@ canvas#darkness {
 }
 
 #intermissionScreen {
-  background: #030804;
+  background: rgba(2, 6, 2, .98);
+  gap: 0;
 }
 
 #intermissionScreen h1 {
@@ -523,6 +567,52 @@ canvas#darkness {
   margin-bottom: 28px;
   max-width: 360px;
   text-align: center;
+}
+
+.inter-survived {
+  font-family: 'Creepster', cursive;
+  font-size: clamp(28px, 6vw, 52px);
+  color: #3a9a3a;
+  letter-spacing: 5px;
+  text-shadow: 0 0 30px rgba(40, 180, 40, .45);
+  margin-bottom: 10px;
+}
+
+.inter-taunt {
+  font-family: 'Special Elite', serif;
+  font-size: 12px;
+  color: #305a30;
+  letter-spacing: 4px;
+  text-align: center;
+  max-width: 380px;
+  line-height: 2.1;
+  text-transform: lowercase;
+  margin-bottom: 38px;
+}
+
+.inter-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 44px;
+}
+
+.inter-gate-label {
+  font-family: 'Special Elite', serif;
+  font-size: 9px;
+  color: #254a25;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+}
+
+.inter-gate-lvl {
+  font-family: 'Creepster', cursive;
+  font-size: clamp(48px, 10vw, 88px);
+  color: #44bb44;
+  letter-spacing: 6px;
+  text-shadow: 0 0 45px rgba(40, 200, 40, .5), 3px 3px 0 #001a00;
+  margin-bottom: 36px;
 }
 
 #gameOver h1 {
@@ -569,25 +659,11 @@ canvas#darkness {
 }
 
 @keyframes jShake {
-  0% {
-    transform: translate(0, 0) scale(1.05);
-  }
-
-  25% {
-    transform: translate(-10px, 8px) scale(1.08);
-  }
-
-  50% {
-    transform: translate(8px, -10px) scale(1.04);
-  }
-
-  75% {
-    transform: translate(-5px, -6px) scale(1.1);
-  }
-
-  100% {
-    transform: translate(10px, 5px) scale(1.05);
-  }
+  0% { transform: translate(0, 0) scale(1.05); }
+  25% { transform: translate(-10px, 8px) scale(1.08); }
+  50% { transform: translate(8px, -10px) scale(1.04); }
+  75% { transform: translate(-5px, -6px) scale(1.1); }
+  100% { transform: translate(10px, 5px) scale(1.05); }
 }
 
 .shake {
@@ -595,29 +671,12 @@ canvas#darkness {
 }
 
 @keyframes sShake {
-  0% {
-    transform: translate(0, 0);
-  }
-
-  20% {
-    transform: translate(-15px, 10px);
-  }
-
-  40% {
-    transform: translate(12px, -8px);
-  }
-
-  60% {
-    transform: translate(-8px, 12px);
-  }
-
-  80% {
-    transform: translate(10px, -6px);
-  }
-
-  100% {
-    transform: translate(0, 0);
-  }
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-15px, 10px); }
+  40% { transform: translate(12px, -8px); }
+  60% { transform: translate(-8px, 12px); }
+  80% { transform: translate(10px, -6px); }
+  100% { transform: translate(0, 0); }
 }
 
 .made-tag {
